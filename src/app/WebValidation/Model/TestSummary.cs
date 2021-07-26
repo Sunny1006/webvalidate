@@ -31,7 +31,7 @@ namespace CSE.WebValidate
         /// </summary>
         public void WriteXmlToConsole()
         {
-            XmlSerializer xs = new (GetType());
+            XmlSerializer xs = new XmlSerializer(GetType());
 
             xs.Serialize(Console.Out, this);
             Console.WriteLine();

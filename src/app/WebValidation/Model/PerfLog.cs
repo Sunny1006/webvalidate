@@ -47,11 +47,6 @@ namespace CSE.WebValidate.Model
         public int StatusCode { get; set; }
 
         /// <summary>
-        /// Gets or sets name of test for grouping
-        /// </summary>
-        public string TestName { get; set; }
-
-        /// <summary>
         /// Gets or sets a value indicating whether the failed flag
         /// </summary>
         public bool Failed { get; set; }
@@ -102,82 +97,40 @@ namespace CSE.WebValidate.Model
         public string Path { get; set; }
 
         /// <summary>
-        /// Gets or sets the Region for logging
+        /// Gets the validation errors
         /// </summary>
-        public string Region { get; set; }
-
-        /// <summary>
-        /// Gets or sets the Zone for logging
-        /// </summary>
-        public string Zone { get; set; }
-
-        /// <summary>
-        /// Gets or sets the validation errors
-        /// </summary>
-        public List<string> Errors { get; set; }
+        public List<string> Errors { get; }
 
         /// <summary>
         /// Gets the json representation of the object
         /// </summary>
         /// <param name="verboseErrors">include verbose errors</param>
-        /// <param name="jsonOptions">json serialization options</param>
         /// <returns>json string</returns>
-        public string ToJson(bool verboseErrors, JsonSerializerOptions jsonOptions)
+        public string ToJson(bool verboseErrors)
         {
-            if (verboseErrors)
+            JsonSerializerOptions options = new JsonSerializerOptions
             {
-                return JsonSerializer.Serialize(this, jsonOptions);
+                IgnoreNullValues = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            };
+
+            if (verboseErrors || Errors == null)
+            {
+                return JsonSerializer.Serialize(this, options);
             }
 
-            // don't serialize errors
-            Errors = null;
+            // don't serialize the errors
+            string json = JsonSerializer.Serialize(this, options);
 
-            return JsonSerializer.Serialize(this, jsonOptions);
-        }
+            int i = json.IndexOf(",\"errors\":", StringComparison.Ordinal);
 
-        /// <summary>
-        /// Gets the tab separated representation of the object
-        /// </summary>
-        /// <param name="verboseErrors">include verbose errors</param>
-        /// <returns>string</returns>
-        public string ToTsv(bool verboseErrors)
-        {
-            // set missing values
-            string quartile = (Quartile != null && Quartile > 0 && Quartile <= 4) ? Quartile.ToString() : "-";
-            Tag = string.IsNullOrWhiteSpace(Tag) ? "-" : Tag.Trim();
-            Category = string.IsNullOrWhiteSpace(Category) ? "-" : Category.Trim();
-            Region = string.IsNullOrWhiteSpace(Region) ? "-" : Region;
-            Zone = string.IsNullOrWhiteSpace(Zone) ? "-" : Zone;
-
-            // log tab delimited
-            string log = $"{Date:o}\t{TestName}\t{Server}\t{StatusCode}\t{ErrorCount}\t{Duration}\t{ContentLength}\t{Region}\t{Zone}\t{CorrelationVector}\t{Tag}\t{quartile}\t{Category}\t{Verb}\t{Path}";
-
-            // log error details
-            if (verboseErrors && ErrorCount > 0)
+            // remove the error messages
+            if (i > -1)
             {
-                log += "\n  " + string.Join("\n  ", Errors);
+                json = json.Substring(0, i) + "}";
             }
 
-            return log;
-        }
-
-        /// <summary>
-        /// Gets the tab separated representation of the object (minimum fields)
-        /// </summary>
-        /// <param name="verboseErrors">include verbose errors</param>
-        /// <returns>string</returns>
-        public string ToTsvMin(bool verboseErrors)
-        {
-            // log tab delimited
-            string log = $"{Date:s}\t{StatusCode}\t{ErrorCount}\t{Duration}\t{ContentLength}\t{Verb}\t{Path}";
-
-            // log error details
-            if (verboseErrors && ErrorCount > 0)
-            {
-                log += "\n  " + string.Join("\n  ", Errors);
-            }
-
-            return log;
+            return json;
         }
     }
 }

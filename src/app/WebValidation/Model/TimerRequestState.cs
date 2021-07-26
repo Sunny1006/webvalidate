@@ -14,6 +14,7 @@ namespace CSE.WebValidate
     /// </summary>
     internal class TimerRequestState : IDisposable
     {
+        private static Semaphore loopController;
         private System.Timers.Timer timer;
         private bool disposedValue;
 
@@ -68,6 +69,11 @@ namespace CSE.WebValidate
         public WebV Test { get; set; }
 
         /// <summary>
+        /// gets or sets the current date time
+        /// </summary>
+        public DateTime CurrentLogTime { get; set; }
+
+        /// <summary>
         /// gets or sets the cancellation token
         /// </summary>
         public CancellationToken Token { get; set; }
@@ -81,8 +87,11 @@ namespace CSE.WebValidate
         /// Timer run method
         /// </summary>
         /// <param name="interval">timer interval</param>
-        public void Run(double interval)
+        /// <param name="maxConcurrent">deprecated</param>
+        public void Run(double interval, int maxConcurrent)
         {
+            loopController = new Semaphore(maxConcurrent, maxConcurrent);
+
             timer = new System.Timers.Timer(interval)
             {
                 Enabled = true,
@@ -104,6 +113,12 @@ namespace CSE.WebValidate
 
             // exit if cancelled
             if (Token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // get a semaphore slot - rate limit the requests
+            if (!loopController.WaitOne(10))
             {
                 return;
             }
@@ -148,6 +163,9 @@ namespace CSE.WebValidate
                 // log and ignore any error
                 Console.WriteLine($"{WebV.Now}\tWebvException\t{ex.Message}");
             }
+
+            // make sure to release the semaphore
+            loopController.Release();
         }
 
         /// <summary>

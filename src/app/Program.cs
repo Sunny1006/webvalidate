@@ -2,17 +2,13 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System;
-using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Hosting;
 
 namespace CSE.WebValidate
 {
@@ -24,7 +20,7 @@ namespace CSE.WebValidate
         /// <summary>
         /// Gets or sets json serialization options
         /// </summary>
-        public static JsonSerializerOptions JsonOptions { get; set; } = new JsonSerializerOptions
+        public static JsonSerializerOptions JsonSerializerOptions { get; set; } = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         };
@@ -85,34 +81,23 @@ namespace CSE.WebValidate
                 return DoDryRun(config);
             }
 
-            // set json options
-            if (config.LogFormat == LogFormat.Json || config.LogFormat == LogFormat.JsonCamel)
+            // set json options based on --strict-json
+            JsonSerializerOptions = new JsonSerializerOptions
             {
-                // set json options based on --strict-json
-                JsonOptions = new JsonSerializerOptions
-                {
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
-                    PropertyNameCaseInsensitive = !config.StrictJson,
-                    AllowTrailingCommas = !config.StrictJson,
-                    ReadCommentHandling = config.StrictJson ? JsonCommentHandling.Disallow : JsonCommentHandling.Skip,
-                };
-
-                // set based on json or json pascal
-                if (config.LogFormat == LogFormat.JsonCamel)
-                {
-                    JsonOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-                    JsonOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
-                }
-            }
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = !config.StrictJson,
+                AllowTrailingCommas = !config.StrictJson,
+                ReadCommentHandling = config.StrictJson ? JsonCommentHandling.Disallow : JsonCommentHandling.Skip,
+            };
 
             // create the test
             try
             {
-                WebV webv = new (config);
+                WebV webv = new WebV(config);
 
                 if (config.DelayStart > 0)
                 {
-                    if (config.LogFormat == LogFormat.Tsv || config.LogFormat == LogFormat.TsvMin)
+                    if (config.LogFormat == LogFormat.Tsv)
                     {
                         Console.WriteLine($"Waiting {config.DelayStart} seconds to start test ...\n");
                     }
@@ -121,49 +106,16 @@ namespace CSE.WebValidate
                     await Task.Delay(config.DelayStart * 1000, TokenSource.Token).ConfigureAwait(false);
                 }
 
-                int ret;
-
                 if (config.RunLoop)
                 {
-                    IHost host = null;
-
-                    if (config.Prometheus)
-                    {
-                        // build and run the web host
-                        host = BuildWebHost(config.Port);
-                        _ = host.StartAsync(TokenSource.Token);
-                    }
-
                     // run in a loop
-                    ret = webv.RunLoop(config, TokenSource.Token);
-
-                    if (host != null)
-                    {
-                        // stop and dispose the web host
-                        await host.StopAsync(TimeSpan.FromMilliseconds(100)).ConfigureAwait(false);
-                        host.Dispose();
-                        host = null;
-                    }
-
-                    // write the stop message
-                    if (config.LogFormat == LogFormat.Json || config.LogFormat == LogFormat.JsonCamel)
-                    {
-                        Console.WriteLine(JsonSerializer.Serialize(
-                            new Dictionary<string, object>
-                            {
-                            { "Date", DateTime.UtcNow },
-                            { "EventType", "Shutdown" },
-                            },
-                            JsonOptions));
-                    }
+                    return webv.RunLoop(config, TokenSource.Token);
                 }
                 else
                 {
                     // run one iteration
-                    ret = await webv.RunOnce(config, TokenSource.Token).ConfigureAwait(false);
+                    return await webv.RunOnce(config, TokenSource.Token).ConfigureAwait(false);
                 }
-
-                return ret;
             }
             catch (TaskCanceledException tce)
             {
@@ -204,20 +156,6 @@ namespace CSE.WebValidate
                 e.Cancel = true;
                 TokenSource.Cancel();
             };
-        }
-
-        // build the web host
-        private static IHost BuildWebHost(int port)
-        {
-            // configure the web host builder
-            return Host.CreateDefaultBuilder()
-                        .ConfigureWebHostDefaults(webBuilder =>
-                        {
-                            webBuilder.UseStartup<Startup>();
-                            webBuilder.UseUrls($"http://*:{port}/");
-                        })
-                        .UseConsoleLifetime()
-                        .Build();
         }
     }
 }

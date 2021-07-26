@@ -9,46 +9,10 @@ using System.Linq;
 namespace CSE.WebValidate
 {
     /// <summary>
-    /// Summary log format enum
-    /// </summary>
-    public enum SummaryFormat
-    {
-        /// <summary>
-        /// Don't display summary
-        /// </summary>
-        None,
-
-        /// <summary>
-        /// Tab Separated Values
-        /// </summary>
-        Tsv,
-
-        /// <summary>
-        /// Json
-        /// </summary>
-        Json,
-
-        /// <summary>
-        /// Camel cased Json
-        /// </summary>
-        JsonCamel,
-
-        /// <summary>
-        /// XML
-        /// </summary>
-        Xml,
-    }
-
-    /// <summary>
     /// Log Format enum
     /// </summary>
     public enum LogFormat
     {
-        /// <summary>
-        /// Tab Separated Values (minimum log) - default
-        /// </summary>
-        TsvMin,
-
         /// <summary>
         /// Tab Separated Values
         /// </summary>
@@ -60,12 +24,8 @@ namespace CSE.WebValidate
         Json,
 
         /// <summary>
-        /// camelCase json
-        /// </summary>
-        JsonCamel,
-
-        /// <summary>
         /// Don't log
+        /// --xml-summary and exceptions will still be written to stdout / stderr
         /// </summary>
         None,
     }
@@ -84,11 +44,6 @@ namespace CSE.WebValidate
         /// gets or sets the list of files to read
         /// </summary>
         public List<string> Files { get; set; } = new List<string>();
-
-        /// <summary>
-        /// gets or sets the port for RunLoop to listen on
-        /// </summary>
-        public int Port { get; set; } = 8080;
 
         /// <summary>
         /// gets or sets the tag to log
@@ -121,9 +76,19 @@ namespace CSE.WebValidate
         public bool Verbose { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether logs should be written in json vs. tab delimited
+        /// </summary>
+        public bool JsonLog { get; set; }
+
+        /// <summary>
         /// gets or sets the the request time out in seconds
         /// </summary>
         public int Timeout { get; set; }
+
+        /// <summary>
+        /// gets or sets the max concurrent requests
+        /// </summary>
+        public int MaxConcurrent { get; set; }
 
         /// <summary>
         /// gets or sets the max errors before the test exits with a non-zero response
@@ -139,6 +104,11 @@ namespace CSE.WebValidate
         /// gets or sets the base url for test files
         /// </summary>
         public string BaseUrl { get; set; }
+
+        /// <summary>
+        /// gets or sets the summary generation time in minutes
+        /// </summary>
+        public int SummaryMinutes { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether we should display verbose errors or just the count
@@ -168,9 +138,9 @@ namespace CSE.WebValidate
         public string WebvSuffix { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the test summary should be written to the log
+        /// Gets or sets a value indicating whether the test summary should be written in xml
         /// </summary>
-        public SummaryFormat Summary { get; set; }
+        public bool XmlSummary { get; set; }
 
         /// <summary>
         /// Gets or sets Log Format
@@ -198,13 +168,51 @@ namespace CSE.WebValidate
         /// <param name="parseResult">system.commandline parse result</param>
         public void SetDefaultValues(ParseResult parseResult = null)
         {
-            // --sleep is different based on --run-loop
+            // default values are different based on --run-loop
             if (parseResult != null)
             {
+                if (parseResult.CommandResult.Children.FirstOrDefault(c => c.Symbol.Name == "verbose") is OptionResult vRes && vRes.IsImplicit)
+                {
+                    Verbose = !RunLoop && !XmlSummary;
+                }
+
                 if (parseResult.CommandResult.Children.FirstOrDefault(c => c.Symbol.Name == "sleep") is OptionResult sleepRes && sleepRes.IsImplicit)
                 {
                     Sleep = RunLoop ? 1000 : 0;
                 }
+
+                if (parseResult.CommandResult.Children.FirstOrDefault(c => c.Symbol.Name == "json-log") is OptionResult jsonLogRes && !jsonLogRes.IsImplicit)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Error.WriteLine("--json-log is deprecated in v2.0 - Use '--log-format json'");
+                    Console.ResetColor();
+                }
+
+                if (parseResult.CommandResult.Children.FirstOrDefault(c => c.Symbol.Name == "summary-minutes") is OptionResult summaryRes && !summaryRes.IsImplicit)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Error.WriteLine("--summary-minutes is deprecated in v2.0");
+                    Console.ResetColor();
+                }
+
+                if (parseResult.CommandResult.Children.FirstOrDefault(c => c.Symbol.Name == "max-concurrent") is OptionResult concurrentRes && !concurrentRes.IsImplicit)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Error.WriteLine("--max-concurrent is deprecated in v2.0");
+                    Console.ResetColor();
+                }
+
+                if (parseResult.CommandResult.Children.FirstOrDefault(c => c.Symbol.Name == "prometheus") is OptionResult promRes && !promRes.IsImplicit)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Error.WriteLine("--prometheus not implemented");
+                    Console.ResetColor();
+                }
+            }
+
+            if (JsonLog)
+            {
+                LogFormat = LogFormat.Json;
             }
 
             // min sleep is 1ms in --run-loop
@@ -216,13 +224,6 @@ namespace CSE.WebValidate
                 BaseUrl += "/";
             }
 
-            // set to null so they don't serialize to json
-            BaseUrl = string.IsNullOrWhiteSpace(BaseUrl) ? null : BaseUrl;
-            Region = string.IsNullOrWhiteSpace(Region) ? null : Region;
-            Tag = string.IsNullOrWhiteSpace(Tag) ? null : Tag;
-            Zone = string.IsNullOrWhiteSpace(Zone) ? null : Zone;
-
-            // make it easier to pass server value
             if (Server != null && Server.Count > 0)
             {
                 string s;
@@ -231,6 +232,7 @@ namespace CSE.WebValidate
                 {
                     s = Server[i];
 
+                    // make it easier to pass server value
                     if (!s.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                     {
                         if (s.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ||

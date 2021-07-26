@@ -33,16 +33,17 @@ namespace CSE.WebValidate.Tests.Unit
         public async Task ValidateAllJsonFilesTest()
         {
             // test all files
-            Config cfg = new ()
+            Config cfg = new Config
             {
                 Server = new List<string> { "http://localhost" },
                 Timeout = 30,
+                MaxConcurrent = 100
             };
 
             cfg.Files.Add("msft.json");
 
             // load and validate all of our test files
-            WebV wv = new (cfg);
+            WebV wv = new WebV(cfg);
 
             // file not found test
             Assert.Null(wv.ReadJson("test"));
@@ -71,13 +72,13 @@ namespace CSE.WebValidate.Tests.Unit
             // test env vars
             parse = App.BuildRootCommand().Parse(string.Empty);
             Assert.Equal(0, parse.Errors.Count);
-            Assert.Equal(22, parse.CommandResult.Children.Count);
+            Assert.Equal(20, parse.CommandResult.Children.Count);
 
             // override the files env var
             parse = App.BuildRootCommand().Parse("-f file1 file2");
             Assert.Equal(0, parse.Errors.Count);
-            Assert.Equal(22, parse.CommandResult.Children.Count);
             Assert.Equal(2, parse.CommandResult.Children.First(c => c.Symbol.Name == "files").Tokens.Count);
+            Assert.Equal(20, parse.CommandResult.Children.Count);
 
             // test run-loop
             System.Environment.SetEnvironmentVariable(EnvKeys.Duration, "30");
@@ -149,9 +150,9 @@ namespace CSE.WebValidate.Tests.Unit
             Assert.Equal(1, parse.Errors.Count);
         }
 
-        private static Config BuildConfig(string server)
+        private Config BuildConfig(string server)
         {
-            App.JsonOptions = new JsonSerializerOptions
+            App.JsonSerializerOptions = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -163,6 +164,7 @@ namespace CSE.WebValidate.Tests.Unit
             {
                 Server = new List<string> { server },
                 Timeout = 10,
+                MaxConcurrent = 100,
                 MaxErrors = 10,
             };
         }
@@ -174,7 +176,7 @@ namespace CSE.WebValidate.Tests.Unit
             cfg.Files.Add("msft.json");
 
             // load and validate all of our test files
-            WebV wv = new (cfg);
+            WebV wv = new WebV(cfg);
             Assert.Equal(0, await wv.RunOnce(cfg, new System.Threading.CancellationToken()).ConfigureAwait(false));
         }
 
@@ -185,7 +187,7 @@ namespace CSE.WebValidate.Tests.Unit
             cfg.Files.Add("github.json");
 
             // load and validate all of our test files
-            WebV wv = new (cfg);
+            WebV wv = new WebV(cfg);
             Assert.Equal(0, await wv.RunOnce(cfg, new System.Threading.CancellationToken()).ConfigureAwait(false));
         }
     }

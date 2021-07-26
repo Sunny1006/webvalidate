@@ -22,11 +22,6 @@ namespace CSE.WebValidate.Model
         public string Path { get; set; }
 
         /// <summary>
-        /// Gets or sets the name of the test
-        /// </summary>
-        public string TestName { get; set; }
-
-        /// <summary>
         /// Gets or sets the tag value
         /// </summary>
         public string Tag { get; set; } = string.Empty;
